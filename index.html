@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head><script>var __mr='all',__md='nevnjxny.qwenwork.host';document.addEventListener('DOMContentLoaded', function () {
   var BAR_HEIGHT = 48;
@@ -688,10 +688,35 @@ new Vue({
 (function () {
   if (!('serviceWorker' in navigator)) { console.warn('[SW] not supported'); return; }
   window.__swActive = false;
-  window.__swReady = navigator.serviceWorker.register('./sw.js', { scope: './' })
+
+  // 每次发布递增版本号，确保客户端拿到最新 SW
+  var SW_VER = 'migu-sw-v3';
+
+  navigator.serviceWorker.register('./sw.js?v=' + SW_VER, { scope: './' })
     .then(function () { return navigator.serviceWorker.ready; })
-    .then(function () { window.__swActive = true; console.log('[SW] ready'); })
+    .then(function (reg) {
+      window.__swActive = true;
+      console.log('[SW] ready');
+      // 检查是否有待更新的 SW，有则立即激活
+      if (reg.waiting) { reg.waiting.postMessage({ type: 'SKIP_WAITING' }); }
+      reg.addEventListener('updatefound', function () {
+        var nw = reg.installing;
+        if (nw) nw.addEventListener('statechange', function () {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            nw.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+    })
     .catch(function (e) { console.warn('[SW] register failed', e); });
+
+  // 收到新 SW 激活通知后刷新一次
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (!window.__swReloaded) {
+      window.__swReloaded = true;
+      location.reload();
+    }
+  });
 })();
 
 /* 把真实 CDN 地址编码成同源路径，交给 SW 代理（规避 mixed content） */

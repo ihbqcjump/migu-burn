@@ -1,6 +1,16 @@
 /* Service Worker: 代理 HTTP CDN 请求，绕过 HTTPS 页面的 Mixed Content 限制 */
 self.addEventListener('install', e => { self.skipWaiting(); });
-self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
+
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
 
 self.addEventListener('fetch', event => {
   const req = event.request;
@@ -19,8 +29,10 @@ self.addEventListener('fetch', event => {
   event.respondWith((async () => {
     let target = encoded;
 
-    // 2) 直接命中 CDN 域名(以防页面直接 fetch 原地址)
-    if (!/^https?:\/\//i.test(target)) target = url;
+    // 2) 白名单校验：只允许代理咪咕 CDN，防止本 SW 被当作开放代理滥用
+    if (!/^https?:\/\/[a-z0-9.-]+\.miguvideo\.com/i.test(target)) {
+      return new Response('forbidden host', { status: 403 });
+    }
     target = target.replace(/^https:\/\//i, 'http://');
 
     try {
